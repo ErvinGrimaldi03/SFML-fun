@@ -1,0 +1,101 @@
+#include <SFML/Graphics.hpp>
+#include <iostream>
+#include <chrono>
+#include <random>
+#include <memory>
+#include <optional>
+
+const unsigned int WIDTH = 640;
+const unsigned int HEIGHT = 360;
+const unsigned int BOARD_SIZE = WIDTH * HEIGHT;
+
+int main() {
+    // Create the window
+    auto window = std::make_unique<sf::RenderWindow>(sf::VideoMode(WIDTH, HEIGHT), "Simple Grid");
+    window->setFramerateLimit(60);
+
+    // Allocate our Game of Life boards
+    unsigned int* board = new unsigned int[BOARD_SIZE];
+    unsigned int* neighbors = new unsigned int[BOARD_SIZE];
+
+    // The original neighbor offsets (1D arithmetic)
+    // (Note: This does not properly wrap horizontally when using a 1D array.)
+    int dir[8] = { 1, int(WIDTH) + 1, int(WIDTH), int(WIDTH) - 1, -1, -int(WIDTH) - 1, -int(WIDTH), -int(WIDTH) + 1 };
+
+    // Initialize random engine
+    std::default_random_engine randEng(std::chrono::steady_clock::now().time_since_epoch().count());
+    std::uniform_int_distribution<int> onOff(0, 1);
+
+    // Create an image (initialize to black)
+    sf::Image image;
+    image.create(WIDTH, HEIGHT, sf::Color::Black);
+    
+    // Create a texture and sprite from the image
+    sf::Texture texture;
+    texture.create(WIDTH, HEIGHT);
+    sf::Sprite sprite(texture);
+
+    // Randomly initialize the board and clear neighbor counts.
+    for (unsigned int i = 0; i < BOARD_SIZE; ++i) {
+        board[i] = onOff(randEng);
+        neighbors[i] = 0;
+    }
+
+    while (window->isOpen()) {
+        // Event handling using SFML 3.0's optional events:
+        while (auto event = window->pollEvent()) {
+            if (event->is<sf::Event::Closed>())
+                window->close();
+            else if (auto keyPressed = event->getIf<sf::Event::KeyPressed>()) {
+                if (keyPressed->scancode == sf::Keyboard::Scancode::Escape)
+                    window->close();
+            }
+        }
+
+        // Update step: Count neighbors from the current board.
+        // (Note: For a proper toroidal Game of Life, you should compute the neighbor indices using 2D coordinates.)
+        for (unsigned int i = 0; i < BOARD_SIZE; ++i) {
+            if (board[i] == 0)
+                continue;
+            for (int j = 0; j < 8; ++j) {
+                int index = i + dir[j];
+                if (index < 0) {
+                    index += BOARD_SIZE;
+                } else if (index >= static_cast<int>(BOARD_SIZE)) {
+                    index -= BOARD_SIZE;
+                }
+                ++neighbors[index];
+            }
+        }
+
+        // Update the board state and set the corresponding pixel in the image.
+        for (unsigned int i = 0; i < BOARD_SIZE; ++i) {
+            if (board[i] == 0 && neighbors[i] == 3)
+                board[i] = 1;
+            else if (board[i] == 1 && (neighbors[i] < 2 || neighbors[i] > 3))
+                board[i] = 0;
+            
+            // Choose the pixel color.
+            sf::Color color = (board[i] == 1) ? sf::Color::White : sf::Color::Black;
+            // Compute (x,y) from the 1D index.
+            unsigned int x = i % WIDTH;
+            unsigned int y = i / WIDTH;
+            image.setPixel(x, y, color);
+
+            // Reset neighbor count for the next frame.
+            neighbors[i] = 0;
+        }
+
+        // Update the texture from the image.
+        texture.update(image);
+
+        // Render: clear, draw the sprite, then display.
+        window->clear();
+        window->draw(sprite);
+        window->display();
+    }
+
+    delete[] board;
+    delete[] neighbors;
+    return 0;
+}
